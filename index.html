@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Catálogo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+
+  <!-- ENCABEZADO: nombre de la tienda, buscador y botón del pedido -->
+  <header class="encabezado">
+    <div class="encabezado__contenido">
+      <p class="marca" id="marca">[Nombre de tu tienda]</p>
+
+      <form class="buscador" id="form-buscar" role="search">
+        <label for="buscador" class="solo-lectores">Buscar productos</label>
+        <input id="buscador" type="search" placeholder="Buscar: gorras, llaveros, perfumes..." autocomplete="off">
+      </form>
+
+      <button type="button" class="boton-pedido" id="abrir-pedido" aria-label="Mi pedido, 0 unidades">
+        Mi pedido
+        <span class="insignia" id="contador">0</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="contenedor">
+
+    <section class="intro">
+      <h1>Catálogo de productos</h1>
+      <p>Mira lo que tenemos, arma tu pedido con precios al detalle y al por mayor, y envíanoslo por WhatsApp.</p>
+    </section>
+
+    <!-- FILTROS: se llenan solos con las categorías que existan en la hoja -->
+    <nav id="categorias" class="chips" aria-label="Categorías"></nav>
+    <nav id="subcategorias" class="chips chips--sub" aria-label="Subcategorías" hidden></nav>
+
+    <p id="resumen" class="resumen" aria-live="polite"></p>
+    <div id="mensaje" class="mensaje" role="status" hidden></div>
+
+    <!-- PRODUCTOS: las tarjetas se dibujan desde app.js -->
+    <section id="productos" class="cuadricula" aria-label="Productos"></section>
+  </main>
+
+  <footer class="pie">
+    <div class="contenedor">[Nombre de tu tienda] · [Dirección o ciudad] · WhatsApp [tu número]</div>
+  </footer>
+
+  <!-- PEDIDO: panel lateral con dos vistas (lista y confirmación) -->
+  <dialog id="pedido" class="pedido" aria-labelledby="pedido-titulo">
+    <div class="pedido__contenido">
+
+      <div class="pedido__cabecera">
+        <h2 id="pedido-titulo">Tu pedido</h2>
+        <button type="button" id="cerrar-pedido" class="boton-icono" aria-label="Cerrar">&times;</button>
+      </div>
+
+      <!-- Vista 1: lista de lo que lleva -->
+      <div id="vista-lista" class="pedido__vista">
+        <p id="aviso-pedido" class="aviso" hidden></p>
+        <ul id="lineas" class="lineas"></ul>
+
+        <div class="pedido__pie">
+          <div class="total"><span>Total estimado</span><strong id="total">L 0.00</strong></div>
+
+          <label for="nombre">Tu nombre</label>
+          <input id="nombre" type="text" autocomplete="name" placeholder="Para identificar tu pedido">
+          <p id="error-nombre" class="error" role="alert" hidden>Escribe tu nombre para continuar.</p>
+
+          <button type="button" id="revisar" class="boton boton--principal">Revisar y enviar</button>
+          <button type="button" id="vaciar" class="boton boton--texto">Vaciar pedido</button>
+          <p class="nota">Los precios y la disponibilidad se confirman por WhatsApp antes de facturar.</p>
+        </div>
+      </div>
+
+      <!-- Vista 2: confirmación antes de abrir WhatsApp -->
+      <div id="vista-confirmar" class="pedido__vista" hidden>
+        <p class="nota nota--arriba">Revisa tu pedido. Al enviarlo, abrimos WhatsApp con el mensaje listo para mandar a la tienda.</p>
+        <ul id="lineas-confirmar" class="lineas lineas--simple"></ul>
+
+        <div class="pedido__pie">
+          <div class="total"><span>Total estimado</span><strong id="total-confirmar">L 0.00</strong></div>
+          <p id="aviso-whatsapp" class="error" role="alert" hidden></p>
+          <button type="button" id="enviar" class="boton boton--whatsapp">Enviar por WhatsApp</button>
+          <button type="button" id="volver" class="boton boton--texto">Volver y seguir viendo</button>
+        </div>
+      </div>
+
+    </div>
+  </dialog>
+
+  <script src="app.js" defer></script>
+</body>
+</html>
