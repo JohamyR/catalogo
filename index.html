@@ -14,7 +14,7 @@
   <!-- ENCABEZADO: nombre de la tienda, buscador y botón del pedido -->
   <header class="encabezado">
     <div class="encabezado__contenido">
-      <p class="marca" id="marca">[Nombre de tu tienda]</p>
+      <p class="marca" id="marca">Mey Variedades</p>
 
       <form class="buscador" id="form-buscar" role="search">
         <label for="buscador" class="solo-lectores">Buscar productos</label>
@@ -29,6 +29,8 @@
   </header>
 
   <main class="contenedor">
+    <!-- VISTA 1: la portada con todos los productos -->
+    <div id="vista-catalogo">
 
     <section class="intro">
       <h1>Catálogo de productos</h1>
@@ -44,12 +46,17 @@
 
     <!-- PRODUCTOS: las tarjetas se dibujan desde app.js -->
     <section id="productos" class="cuadricula" aria-label="Productos"></section>
+ 
+    </div>
+ 
+    <!-- VISTA 2: el detalle de un producto (se dibuja desde app.js) -->
+    <section id="vista-detalle" aria-label="Detalle del producto" hidden></section>
   </main>
-
+ 
   <footer class="pie">
-    <div class="contenedor">[Nombre de tu tienda] · [Dirección o ciudad] · WhatsApp [tu número]</div>
+    <div class="contenedor">Mey Variedades · [Dirección o ciudad] · WhatsApp [tu número]</div>
   </footer>
-
+  
   <!-- PEDIDO: panel lateral con dos vistas (lista y confirmación) -->
   <dialog id="pedido" class="pedido" aria-labelledby="pedido-titulo">
     <div class="pedido__contenido">
