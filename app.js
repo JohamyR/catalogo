@@ -49,7 +49,9 @@ const tarjetas = new Map();          // codigo -> tarjeta dibujada en pantalla
 let carrito = {};                    // subcodigo -> cantidad
 let nombreCliente = "";
 let textoAviso = "";                 // aviso dentro del pedido (por ejemplo, estilos que se agotaron)
-
+let scrollCatalogo = 0;              // dónde estaba la portada, para volver al mismo lugar
+let vinoDelCatalogo = false;         // true si abrió el detalle tocando una tarjeta
+let ultimoVisto = "";                // código del último producto abierto
 const $ = (selector) => document.querySelector(selector);
 
 
@@ -220,7 +222,9 @@ function cambiarCantidad(estilo, cambio) {
   else carrito[estilo.subcodigo] = nueva;
 
   guardar();
-  refrescarTarjeta(indiceEstilos.get(estilo.subcodigo).producto);
+  const producto = indiceEstilos.get(estilo.subcodigo).producto;
+  if (productoDeRuta() === producto) refrescarDetalle(producto);   // si está viendo ese producto
+  else refrescarTarjeta(producto);                                  // si está en la portada
   dibujarPedido();
 }
 
@@ -321,12 +325,50 @@ function crearContador(cantidad, alCambiar, etiqueta, idFoco) {
   );
 }
 
-// ----- Tarjeta de producto -----
+// ----- Tarjeta de producto (portada) -----
+// En la portada cada producto es solo una tarjeta simple: foto, nombre y precios.
+// Al tocarla se abre su pantalla de detalle, donde están los estilos y el botón de agregar.
 
 function estiloActual(p) {
   const elegido = p.estilos.find((e) => e.subcodigo === seleccion[p.codigo]);
   return elegido || p.estilos.find((e) => e.disponible) || p.estilos[0];
 }
+
+function crearTarjeta(p) {
+  const estilo = estiloActual(p);
+  const unidades = unidadesDe(p);
+  const todosAgotados = p.estilos.every((e) => !e.disponible);
+  const precioValido = Number.isFinite(p.precioDetalle);
+
+  return el("a", {
+    class: "tarjeta",
+    href: "#/producto/" + encodeURIComponent(p.codigo),
+    onclick: () => { scrollCatalogo = window.scrollY; vinoDelCatalogo = true; },
+  },
+    el("div", { class: "tarjeta__foto" },
+      crearFoto(estilo, p.nombre),
+      todosAgotados && el("span", { class: "etiqueta etiqueta--agotado", texto: "Agotado" }),
+      unidades > 0 && el("span", { class: "etiqueta etiqueta--pedido", texto: unidades + " en tu pedido" }),
+    ),
+    el("div", { class: "tarjeta__cuerpo" },
+      el("h2", { texto: p.nombre }),
+      el("p", { class: "tarjeta__precio", texto: precioValido ? dinero(p.precioDetalle) : "Consultar precio" }),
+      tieneMayoreo(p) && el("p", { class: "tarjeta__mayoreo", texto: "Mayoreo " + dinero(p.precioMayoreo) + " desde " + p.minimoMayoreo + " u." }),
+      p.estilos.length > 1 && el("p", { class: "tarjeta__estilos", texto: p.estilos.length + " estilos" }),
+    ),
+  );
+}
+
+// Redibuja solo la tarjeta que cambió (no toda la lista)
+function refrescarTarjeta(p) {
+  const vieja = tarjetas.get(p.codigo);
+  if (!vieja || !vieja.isConnected) return;
+  const nueva = crearTarjeta(p);
+  vieja.replaceWith(nueva);
+  tarjetas.set(p.codigo, nueva);
+}
+
+// ----- Pantalla de detalle de un producto -----
 
 function crearMiniatura(p, estilo, actual) {
   const cantidad = carrito[estilo.subcodigo] || 0;
@@ -338,14 +380,14 @@ function crearMiniatura(p, estilo, actual) {
     "aria-label": descripcion,
     "aria-pressed": String(elegida),
     "data-foco": "estilo-" + estilo.subcodigo,
-    onclick: () => { seleccion[p.codigo] = estilo.subcodigo; refrescarTarjeta(p); },
+    onclick: () => { seleccion[p.codigo] = estilo.subcodigo; refrescarDetalle(p); },
   },
     crearFoto(estilo, "", true),
     cantidad > 0 && el("span", { class: "miniatura__cantidad", texto: String(cantidad), "aria-hidden": "true" }),
   );
 }
 
-function crearTarjeta(p) {
+function crearDetalle(p) {
   const estilo = estiloActual(p);
   const cantidad = carrito[estilo.subcodigo] || 0;
   const unidades = unidadesDe(p);
@@ -381,14 +423,14 @@ function crearTarjeta(p) {
     accion = crearContador(cantidad, (c) => cambiarCantidad(estilo, c), estilo.nombre || p.nombre, "");
   }
 
-  return el("article", { class: "tarjeta" },
-    el("div", { class: "tarjeta__foto" },
+  return el("div", { class: "detalle" },
+    el("div", { class: "detalle__foto" },
       crearFoto(estilo, p.nombre + (estilo.nombre ? ", " + estilo.nombre : "")),
       el("span", { class: "etiqueta " + etiqueta[1], texto: etiqueta[0] }),
     ),
-    el("div", { class: "tarjeta__cuerpo" },
+    el("div", { class: "detalle__info" },
       el("p", { class: "tarjeta__categoria" }, [p.categoria, p.subcategoria, p.codigo].filter(Boolean).map((t) => el("span", { texto: t }))),
-      el("h2", { texto: p.nombre }),
+      el("h1", { id: "detalle-titulo", tabindex: "-1", texto: p.nombre }),
       p.estilos.length === 1 && estilo.nombre && el("p", { class: "estilo-unico", texto: estilo.nombre }),
       el("div", { class: "precios" },
         el("div", { class: "precio-fila" },
@@ -406,20 +448,66 @@ function crearTarjeta(p) {
         el("span", { class: "estilos__nombre", texto: estilo.nombre }),
       ),
       aviso,
-      el("div", { class: "tarjeta__acciones" }, accion),
+      el("div", { class: "detalle__acciones" }, accion),
     ),
   );
 }
 
-// Redibuja solo la tarjeta que cambió (no toda la lista)
-function refrescarTarjeta(p) {
-  const vieja = tarjetas.get(p.codigo);
-  if (!vieja || !vieja.isConnected) return;
-  const id = vieja.contains(document.activeElement) ? document.activeElement.dataset.foco : null;
-  const nueva = crearTarjeta(p);
-  vieja.replaceWith(nueva);
-  tarjetas.set(p.codigo, nueva);
-  restaurarFoco(nueva, id);
+// Dibuja la pantalla de detalle completa (enlace "Volver" + el producto)
+function dibujarDetalle(p) {
+  $("#vista-detalle").replaceChildren(
+    el("a", {
+      class: "volver",
+      href: "#/",
+      // Si venimos de la portada, "volver" usa el historial: así la portada queda como estaba
+      onclick: (e) => { if (vinoDelCatalogo) { e.preventDefault(); history.back(); } },
+    }, "← Volver al catálogo"),
+    crearDetalle(p),
+  );
+}
+
+// Redibuja el detalle después de un cambio (cantidad o estilo), cuidando el foco del teclado
+function refrescarDetalle(p) {
+  if (productoDeRuta() !== p) return;
+  conservarFoco($("#vista-detalle"), () => dibujarDetalle(p));
+}
+
+// ----- Qué pantalla mostrar: portada o detalle (según el # de la dirección) -----
+// Dirección de la portada:  .../catalogo/
+// Dirección de un producto: .../catalogo/#/producto/J-101
+
+function productoDeRuta() {
+  const coincide = location.hash.match(/^#\/producto\/(.+)$/);
+  if (!coincide) return null;
+  let codigo;
+  try { codigo = decodeURIComponent(coincide[1]); } catch (e) { return null; }
+  return productos.find((p) => p.codigo === codigo) || null;
+}
+
+function mostrarRuta() {
+  const p = productoDeRuta();
+  $("#vista-catalogo").hidden = Boolean(p);
+  $("#vista-detalle").hidden = !p;
+
+  if (p) {
+    ultimoVisto = p.codigo;
+    dibujarDetalle(p);
+    document.title = p.nombre + " · " + CONFIG.nombreTienda;
+    window.scrollTo(0, 0);
+    $("#detalle-titulo").focus({ preventScroll: true });
+  } else {
+    vinoDelCatalogo = false;
+    dibujarProductos();
+    document.title = "Catálogo · " + CONFIG.nombreTienda;
+    window.scrollTo(0, scrollCatalogo);   // vuelve al mismo lugar donde estaba
+
+    // Devuelve el foco del teclado a la tarjeta que se acababa de ver (si no está escribiendo en el buscador)
+    const activo = document.activeElement;
+    const sinFoco = activo === document.body || $("#vista-detalle").contains(activo);
+    const tarjeta = tarjetas.get(ultimoVisto);
+    if (sinFoco && tarjeta) tarjeta.focus({ preventScroll: true });
+    ultimoVisto = "";
+  }
 }
 
 // ----- Filtros y lista de productos -----
@@ -610,8 +698,9 @@ function conectarEventos() {
   // Buscador
   $("#form-buscar").addEventListener("submit", (e) => e.preventDefault());
   $("#buscador").addEventListener("input", (e) => {
-    filtros.texto = e.target.value;
-    dibujarProductos();
+       filtros.texto = e.target.value;
+    if (productoDeRuta()) location.hash = "#/";   // buscar desde un detalle vuelve a la portada
+    else dibujarProductos();
   });
 
   // Abrir y cerrar el panel del pedido
@@ -656,8 +745,12 @@ function conectarEventos() {
     textoAviso = "";
     guardar();
     dibujarProductos();
+    const abierto = productoDeRuta();
+    if (abierto) refrescarDetalle(abierto);
     dibujarPedido();
   });
+    // Cambiar de pantalla (portada ⇄ detalle): también funciona con el botón "atrás" del celular
+  window.addEventListener("hashchange", () => { if (productos.length > 0) mostrarRuta(); });
 }
 
 async function cargarYMostrar() {
@@ -670,7 +763,7 @@ async function cargarYMostrar() {
     limpiarPedido();
     $("#mensaje").hidden = true;
     dibujarFiltros();
-    dibujarProductos();
+    mostrarRuta();
     dibujarPedido();
     if (productos.length === 0) mostrarMensaje("Todavía no hay productos en el catálogo.", "", false);
   } catch (error) {
@@ -680,6 +773,7 @@ async function cargarYMostrar() {
 }
 
 function iniciar() {
+     if ("scrollRestoration" in history) history.scrollRestoration = "manual";   // la posición la controlamos nosotros
   document.title = "Catálogo · " + CONFIG.nombreTienda;
   $("#marca").textContent = CONFIG.nombreTienda;
   recuperar();
