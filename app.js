@@ -20,9 +20,9 @@ const CONFIG = {
 
   // Número de WhatsApp de la tienda, con código de país y sin signos ni espacios.
   // Ejemplo de Honduras: "50499999999". Mientras tenga letras, el botón avisa que falta.
-  whatsapp: "504XXXXXXXX",
+  whatsapp: "50497646605",
 
-  nombreTienda: "[Nombre de tu tienda]",
+  nombreTienda: "Mey Variedades",
   moneda: "L",
   carpetaFotos: "fotos/",
 };
