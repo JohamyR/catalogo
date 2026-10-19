@@ -647,21 +647,37 @@ function mostrarVista(vista) {
 
 function armarMensaje() {
   const lineas = lineasDelPedido();
-  const detalle = lineas.map((l) => {
-    const estilo = [l.estilo.nombre, "(" + l.estilo.subcodigo + ")"].filter(Boolean).join(" ");
-    return "• " + l.producto.codigo + " · " + l.producto.nombre + " — " + estilo +
-      " × " + l.cantidad + " a " + dinero(l.precio) + " = " + dinero(l.subtotal) +
-      (l.mayoreo ? " (mayoreo)" : "");
+
+  // Junta las líneas por producto (código), conservando el orden en que se agregaron
+  const grupos = new Map();
+  for (const l of lineas) {
+    if (!grupos.has(l.producto.codigo)) grupos.set(l.producto.codigo, []);
+    grupos.get(l.producto.codigo).push(l);
+  }
+
+  // Un bloque por producto: código y nombre, unidades y precio, estilos y subtotal
+  // (en WhatsApp, *así* es negrita y _así_ es cursiva)
+  const bloques = [...grupos.values()].map((items, i) => {
+    const p = items[0].producto;
+    const unidades = items.reduce((suma, l) => suma + l.cantidad, 0);
+    const subtotal = items.reduce((suma, l) => suma + l.subtotal, 0);
+    const nota = items[0].mayoreo ? " (mayoreo)" : items[0].oferta ? " (oferta)" : "";
+    return [
+      (i + 1) + ". *" + p.codigo + "* · " + p.nombre,
+      "   " + unidades + " u. a " + dinero(items[0].precio) + nota,
+      ...items.map((l) => "   • " + [l.estilo.nombre, "(" + l.estilo.subcodigo + ")"].filter(Boolean).join(" ") + " × " + l.cantidad),
+      "   Subtotal: *" + dinero(subtotal) + "*",
+    ].join("\n");
   });
+
   return [
-    "Hola, quiero hacer este pedido:",
-    "",
+    "*PEDIDO DE COTIZACIÓN*",
     "Nombre: " + nombreCliente,
     "",
-    ...detalle,
+    bloques.join("\n\n"),
     "",
-    "Total estimado: " + dinero(totalDelPedido(lineas)),
-    "(Precios y disponibilidad por confirmar.)",
+    "*Total estimado: " + dinero(totalDelPedido(lineas)) + "*",
+    "_Precios y disponibilidad por confirmar._",
   ].join("\n");
 }
 
