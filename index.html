@@ -6,15 +6,21 @@
   <title>Catálogo</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="estilos.css">
 </head>
 <body>
 
-  <!-- ENCABEZADO: nombre de la tienda, buscador y botón del pedido -->
+  <!-- FRANJA ROJA: anuncio fijo de arriba -->
+  <div class="franja">Venta al por mayor y al detalle · Pedidos por WhatsApp</div>
+
+  <!-- ENCABEZADO: logo, buscador y botón del pedido -->
   <header class="encabezado">
     <div class="encabezado__contenido">
-      <p class="marca" id="marca">Mey Variedades</p>
+      <div class="encabezado__marca">
+        <span class="logo" aria-hidden="true">MEY</span>
+        <p class="marca" id="marca">Variedades</p>
+      </div>
 
       <form class="buscador" id="form-buscar" role="search">
         <label for="buscador" class="solo-lectores">Buscar productos</label>
@@ -29,34 +35,43 @@
   </header>
 
   <main class="contenedor">
-    <!-- VISTA 1: la portada con todos los productos -->
+    <!-- VISTA 1: la portada -->
     <div id="vista-catalogo">
 
-    <section class="intro">
-      <h1>Catálogo de productos</h1>
-      <p>Mira lo que tenemos, arma tu pedido con precios al detalle y al por mayor, y envíanoslo por WhatsApp.</p>
-    </section>
+      <!-- ANUNCIOS: carrusel (app.js lo llena con la pestaña Anuncios; se oculta si no hay anuncios) -->
+      <section id="anuncios" class="anuncios" aria-label="Anuncios" hidden></section>
 
-    <!-- FILTROS: se llenan solos con las categorías que existan en la hoja -->
-    <nav id="categorias" class="chips" aria-label="Categorías"></nav>
-    <nav id="subcategorias" class="chips chips--sub" aria-label="Subcategorías" hidden></nav>
+      <section class="intro">
+        <h1>Catálogo de productos</h1>
+        <p>Arma tu pedido y envíanoslo por WhatsApp. ¿Compras por mayor? Escríbenos y te damos tu precio.</p>
+      </section>
 
-    <p id="resumen" class="resumen" aria-live="polite"></p>
-    <div id="mensaje" class="mensaje" role="status" hidden></div>
+      <!-- FILTROS: se llenan solos con las categorías que existan en la hoja -->
+      <nav id="categorias" class="chips" aria-label="Categorías"></nav>
+      <nav id="subcategorias" class="chips chips--sub" aria-label="Subcategorías" hidden></nav>
 
-    <!-- PRODUCTOS: las tarjetas se dibujan desde app.js -->
-    <section id="productos" class="cuadricula" aria-label="Productos"></section>
- 
+      <p id="resumen" class="resumen" aria-live="polite"></p>
+      <div id="mensaje" class="mensaje" role="status" hidden></div>
+
+      <!-- PRODUCTOS: 20 tarjetas por página (se dibujan desde app.js) -->
+      <section id="productos" class="cuadricula" aria-label="Productos"></section>
+
+      <!-- PÁGINAS: Anterior / Página 2 de 5 / Siguiente -->
+      <nav id="paginas" class="paginas" aria-label="Páginas del catálogo" hidden></nav>
+
     </div>
- 
+
     <!-- VISTA 2: el detalle de un producto (se dibuja desde app.js) -->
     <section id="vista-detalle" aria-label="Detalle del producto" hidden></section>
   </main>
- 
+
   <footer class="pie">
-    <div class="contenedor">Mey Variedades · [Dirección o ciudad] · WhatsApp [tu número]</div>
+    <div class="contenedor pie__contenido">
+      <span class="pie__nombre">Mey Variedades</span>
+      <span>WhatsApp +504 9764-6605</span>
+    </div>
   </footer>
-  
+
   <!-- PEDIDO: panel lateral con dos vistas (lista y confirmación) -->
   <dialog id="pedido" class="pedido" aria-labelledby="pedido-titulo">
     <div class="pedido__contenido">
@@ -70,6 +85,9 @@
       <div id="vista-lista" class="pedido__vista">
         <p id="aviso-pedido" class="aviso" hidden></p>
         <ul id="lineas" class="lineas"></ul>
+
+        <!-- Invitación a precios mayoristas (app.js le pone el enlace de WhatsApp) -->
+        <p class="mayorista">¿Compras para emprender? <a id="enlace-mayorista" href="#" target="_blank" rel="noopener">Pregunta por precios mayoristas o especiales por WhatsApp</a></p>
 
         <div class="pedido__pie">
           <div class="total"><span>Total estimado</span><strong id="total">L 0.00</strong></div>
