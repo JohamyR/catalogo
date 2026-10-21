@@ -1,112 +1,80 @@
 /* =====================================================================
-   CATÁLOGO EN LÍNEA — app.js
-
-   Cómo está organizado este archivo (de arriba hacia abajo):
-     0. Configuración  → lo único que normalmente tendrás que editar
-     1. Datos          → leer la hoja de Google y convertirla en productos
-     2. Pedido         → cantidades, precio de mayoreo y totales
-     3. Pantalla       → dibujar tarjetas, filtros y el pedido
-     4. WhatsApp       → armar el mensaje y abrir el chat
-     5. Arranque       → poner todo en marcha
+   CATÁLOGO EN LÍNEA — app.js (versión 2)
+   0. Configuración  1. Datos  2. Pedido  3. Pantalla  4. WhatsApp  5. Arranque
    ===================================================================== */
 
-
-/* ---------------------------------------------------------------------
-   0. CONFIGURACIÓN
-   --------------------------------------------------------------------- */
+/* ---------- 0. CONFIGURACIÓN ---------- */
 const CONFIG = {
-  // Enlace de la hoja publicada como CSV
-  urlHoja: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRgDsUuVRfdhf0qjU92uOapjrKFwNTMpoPP-gvQ8LRu_2Xiresl7nkNyx5qGoZTRA/pub?gid=1860917639&single=true&output=csv",
-
-  // Número de WhatsApp de la tienda, con código de país y sin signos ni espacios.
-  // Ejemplo de Honduras: "50499999999". Mientras tenga letras, el botón avisa que falta.
-  whatsapp: "50497646605",
-
+  // Enlaces CSV de la hoja nueva (Archivo → Compartir → Publicar en la web). CAMBIA los dos.
+  urlHoja: "https://docs.google.com/spreadsheets/d/e/2PACX-1vSHZelMH812y1XOIAeyC3Y-bwtHAg8w4wIkDqqGxw0cvYja53_hFmf_4Wxt3ZqPjQ/pub?gid=630024380&single=true&output=csv",
+  urlAnuncios: "https://docs.google.com/spreadsheets/d/e/2PACX-1vSHZelMH812y1XOIAeyC3Y-bwtHAg8w4wIkDqqGxw0cvYja53_hFmf_4Wxt3ZqPjQ/pub?gid=2076843561&single=true&output=csv",                    // pestaña Anuncios; si queda vacío, el carrusel no se muestra
+  whatsapp: "50497646605",            // con código de país, sin signos ni espacios
   nombreTienda: "Mey Variedades",
   moneda: "L",
   carpetaFotos: "fotos/",
+  productosPorPagina: 20,             // tarjetas por página en la portada
 };
 
-// Columnas que la hoja debe tener (la columna "referencia" no se usa en la página)
-const COLUMNAS = [
-  "codigo", "subcodigo", "categoria", "subcategoria", "nombre", "estilo",
-  "foto", "precio_detalle", "precio_mayoreo", "minimo_mayoreo", "estado",
-];
+// Columnas obligatorias de la pestaña Catalogo ("etiqueta" es opcional)
+const COLUMNAS = ["codigo", "subcodigo", "categoria", "subcategoria", "nombre", "estilo", "foto", "precio", "estado"];
 
 const TODO = "Todo";
 const TODAS = "Todas";
 const CLAVE_GUARDADO = "catalogo-pedido-v1";
 
-
-/* ---------------------------------------------------------------------
-   Estado de la página: aquí vive todo lo que cambia mientras se usa
-   --------------------------------------------------------------------- */
-let productos = [];                  // lista de productos (uno por código)
-const indiceEstilos = new Map();     // subcodigo -> { producto, estilo }, para buscar rápido
+/* ---------- Estado de la página ---------- */
+let productos = [];
+let anuncios = [];
+const indiceEstilos = new Map();     // subcodigo -> { producto, estilo }
 const filtros = { categoria: TODO, subcategoria: TODAS, texto: "" };
 const seleccion = {};                // codigo -> subcodigo del estilo que se está viendo
-const tarjetas = new Map();          // codigo -> tarjeta dibujada en pantalla
+const tarjetas = new Map();          // codigo -> tarjeta dibujada (solo la página actual)
 let carrito = {};                    // subcodigo -> cantidad
 let nombreCliente = "";
-let textoAviso = "";                 // aviso dentro del pedido (por ejemplo, estilos que se agotaron)
-let scrollCatalogo = 0;              // dónde estaba la portada, para volver al mismo lugar
-let vinoDelCatalogo = false;         // true si abrió el detalle tocando una tarjeta
-let ultimoVisto = "";                // código del último producto abierto
+let textoAviso = "";
+let pagina = 1;
+let scrollCatalogo = 0;
+let vinoDelCatalogo = false;
+let ultimoVisto = "";
 const $ = (selector) => document.querySelector(selector);
 
+/* ---------- 1. DATOS ---------- */
 
-/* ---------------------------------------------------------------------
-   1. DATOS: de la hoja de Google a una lista de productos
-   --------------------------------------------------------------------- */
-
-// Convierte el texto CSV en una lista de filas (cada fila es una lista de celdas).
-// Entiende comillas, comas dentro de un texto y saltos de línea.
+// Convierte el texto CSV en filas de celdas (entiende comillas, comas y saltos de línea)
 function leerCSV(texto) {
-  if (texto.charCodeAt(0) === 0xFEFF) texto = texto.slice(1);   // quita una marca invisible del inicio
+  if (texto.charCodeAt(0) === 0xFEFF) texto = texto.slice(1);
   const filas = [];
   let fila = [];
   let celda = "";
   let entreComillas = false;
-
   for (let i = 0; i < texto.length; i++) {
     const c = texto[i];
     if (entreComillas) {
       if (c === '"') {
-        if (texto[i + 1] === '"') { celda += '"'; i++; }   // dos comillas seguidas = una comilla de verdad
+        if (texto[i + 1] === '"') { celda += '"'; i++; }
         else entreComillas = false;
-      } else {
-        celda += c;
-      }
-    } else if (c === '"') {
-      entreComillas = true;
-    } else if (c === ",") {
-      fila.push(celda); celda = "";
-    } else if (c === "\n" || c === "\r") {
+      } else celda += c;
+    } else if (c === '"') entreComillas = true;
+    else if (c === ",") { fila.push(celda); celda = ""; }
+    else if (c === "\n" || c === "\r") {
       if (c === "\r" && texto[i + 1] === "\n") i++;
-      fila.push(celda); filas.push(fila);
-      fila = []; celda = "";
-    } else {
-      celda += c;
-    }
+      fila.push(celda); filas.push(fila); fila = []; celda = "";
+    } else celda += c;
   }
   if (celda !== "" || fila.length > 0) { fila.push(celda); filas.push(fila); }
   return filas;
 }
 
-// Convierte las filas en objetos: { codigo: "J-101", estilo: "Perlas rojas", ... }
-function filasAObjetos(filas) {
+// Filas → objetos { codigo: "J-101", ... }. "obligatorias" es la lista de columnas que deben existir.
+function filasAObjetos(filas, obligatorias) {
   if (filas.length === 0) throw new Error("La hoja está vacía.");
   const encabezados = filas[0].map((h) => h.trim().toLowerCase());
-  const faltan = COLUMNAS.filter((c) => !encabezados.includes(c));
+  const faltan = obligatorias.filter((c) => !encabezados.includes(c));
   if (faltan.length > 0) throw new Error("Faltan estas columnas en la hoja: " + faltan.join(", "));
-
-  return filas
-    .slice(1)
-    .map((fila) => Object.fromEntries(encabezados.map((h, i) => [h, (fila[i] ?? "").trim()])))
-    .filter((o) => o.codigo && o.subcodigo);        // ignora las filas vacías
+  return filas.slice(1).map((fila) => Object.fromEntries(encabezados.map((h, i) => [h, (fila[i] ?? "").trim()])));
 }
 
-// Convierte "60", "60.00", "L 1,200.50" o "45,5" en un número
+// "60", "60.00", "L 1,200.50" o "45,5" → número
 function aNumero(texto) {
   let t = String(texto ?? "").replace(/[^\d.,-]/g, "");
   if (t === "") return NaN;
@@ -114,52 +82,33 @@ function aNumero(texto) {
   const ultimoPunto = t.lastIndexOf(".");
   if (ultimaComa > ultimoPunto) {
     const decimales = t.length - ultimaComa - 1;
-    const esMiles = ultimoPunto === -1 && decimales === 3;   // "1,200" = mil doscientos
+    const esMiles = ultimoPunto === -1 && decimales === 3;
     t = esMiles ? t.replace(/,/g, "") : t.replace(/\./g, "").replace(",", ".");
-  } else {
-    t = t.replace(/,/g, "");
-  }
+  } else t = t.replace(/,/g, "");
   return Number(t);
 }
 
-// Minúsculas y sin tildes, para que "Joyería" y "joyeria" se busquen igual
+// Minúsculas y sin tildes: "Joyería" y "joyeria" se buscan igual
 function normalizar(texto) {
-  return String(texto ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+  return String(texto ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 }
 
-// Junta las filas que tienen el mismo "codigo" en un solo producto con varios estilos
+const mismoNumero = (a, b) => a === b || (Number.isNaN(a) && Number.isNaN(b));
+
+// Junta las filas con el mismo "codigo" en un producto con varios estilos
 function agruparProductos(filas) {
   const porCodigo = new Map();
-
-  for (const f of filas) {
-    const detalle = aNumero(f.precio_detalle);
-    const mayoreo = aNumero(f.precio_mayoreo);
-    const minimo = aNumero(f.minimo_mayoreo);
-
+  for (const f of filas.filter((o) => o.codigo && o.subcodigo)) {
+    const precio = aNumero(f.precio);
     let producto = porCodigo.get(f.codigo);
     if (!producto) {
-      producto = {
-        codigo: f.codigo,
-        categoria: f.categoria,
-        subcategoria: f.subcategoria,
-        nombre: f.nombre,
-        precioDetalle: detalle,
-        precioMayoreo: mayoreo,
-        minimoMayoreo: minimo,
-        estilos: [],
-      };
+      producto = { codigo: f.codigo, categoria: f.categoria, subcategoria: f.subcategoria, nombre: f.nombre, precio, etiqueta: "", estilos: [] };
       porCodigo.set(f.codigo, producto);
-    } else if (detalle !== producto.precioDetalle || mayoreo !== producto.precioMayoreo || minimo !== producto.minimoMayoreo) {
-      // Los precios deben ser iguales en todas las filas del mismo código. Si no, se usan los de la primera.
-      console.warn("Precios distintos dentro del código " + f.codigo + " (fila " + f.subcodigo + "). Se usan los de la primera fila.");
+    } else if (!mismoNumero(precio, producto.precio)) {
+      console.warn("Precios distintos dentro del código " + f.codigo + " (fila " + f.subcodigo + "). Se usa el de la primera fila.");
     }
-
-    producto.estilos.push({
-      subcodigo: f.subcodigo,
-      nombre: f.estilo,
-      foto: f.foto,
-      disponible: normalizar(f.estado) === "disponible",   // cualquier otra cosa cuenta como agotado
-    });
+    if (!producto.etiqueta && f.etiqueta) producto.etiqueta = f.etiqueta;   // basta con ponerla en una fila del código
+    producto.estilos.push({ subcodigo: f.subcodigo, nombre: f.estilo, foto: f.foto, disponible: normalizar(f.estado) === "disponible" });
   }
   return [...porCodigo.values()];
 }
@@ -167,48 +116,34 @@ function agruparProductos(filas) {
 async function cargarCatalogo() {
   const respuesta = await fetch(CONFIG.urlHoja, { cache: "no-cache" });
   if (!respuesta.ok) throw new Error("La hoja respondió con el error " + respuesta.status);
-  const texto = await respuesta.text();
-  return agruparProductos(filasAObjetos(leerCSV(texto)));
+  return agruparProductos(filasAObjetos(leerCSV(await respuesta.text()), COLUMNAS));
 }
 
-
-/* ---------------------------------------------------------------------
-   2. PEDIDO: cantidades, mayoreo y totales
-   --------------------------------------------------------------------- */
-
-function tieneMayoreo(p) {
-  return Number.isFinite(p.precioMayoreo) && Number.isFinite(p.minimoMayoreo) && p.minimoMayoreo >= 1;
+// Los anuncios son opcionales: si algo falla, el catálogo sigue funcionando sin carrusel
+async function cargarAnuncios() {
+  if (!/^https?:\/\//.test(CONFIG.urlAnuncios)) return [];
+  try {
+    const respuesta = await fetch(CONFIG.urlAnuncios, { cache: "no-cache" });
+    if (!respuesta.ok) return [];
+    const filas = filasAObjetos(leerCSV(await respuesta.text()), ["titulo", "activo"]);
+    return filas.filter((a) => a.titulo && normalizar(a.activo) === "si");
+  } catch (e) {
+    console.warn("No se pudieron cargar los anuncios:", e);
+    return [];
+  }
 }
 
-// Unidades del producto en el pedido, SUMANDO todos sus estilos
-function unidadesDe(p) {
-  return p.estilos.reduce((suma, e) => suma + (carrito[e.subcodigo] || 0), 0);
-}
+/* ---------- 2. PEDIDO (un solo precio por producto) ---------- */
 
-// La regla del mayoreo: desde el mínimo, se aplica a todas las unidades del código
-function aplicaMayoreo(p) {
-  return tieneMayoreo(p) && unidadesDe(p) >= p.minimoMayoreo;
-}
+const unidadesDe = (p) => p.estilos.reduce((suma, e) => suma + (carrito[e.subcodigo] || 0), 0);
 
-function precioUnitario(p) {
-  return aplicaMayoreo(p) ? p.precioMayoreo : p.precioDetalle;
-}
-
-// Cada línea del pedido: un estilo con su cantidad y su precio
 function lineasDelPedido() {
   const lineas = [];
   for (const [subcodigo, cantidad] of Object.entries(carrito)) {
     const dato = indiceEstilos.get(subcodigo);
     if (!dato) continue;
-    const precio = precioUnitario(dato.producto);
-    lineas.push({
-      producto: dato.producto,
-      estilo: dato.estilo,
-      cantidad,
-      precio,
-      subtotal: precio * cantidad,
-      mayoreo: aplicaMayoreo(dato.producto),
-    });
+    const precio = dato.producto.precio;
+    lineas.push({ producto: dato.producto, estilo: dato.estilo, cantidad, precio, subtotal: precio * cantidad });
   }
   return lineas;
 }
@@ -220,19 +155,16 @@ function cambiarCantidad(estilo, cambio) {
   const nueva = Math.min(999, Math.max(0, (carrito[estilo.subcodigo] || 0) + cambio));
   if (nueva === 0) delete carrito[estilo.subcodigo];
   else carrito[estilo.subcodigo] = nueva;
-
   guardar();
   const producto = indiceEstilos.get(estilo.subcodigo).producto;
-  if (productoDeRuta() === producto) refrescarDetalle(producto);   // si está viendo ese producto
-  else refrescarTarjeta(producto);                                  // si está en la portada
+  if (productoDeRuta() === producto) refrescarDetalle(producto);
+  else refrescarTarjeta(producto);
   dibujarPedido();
 }
 
-// El pedido se guarda en el navegador para que no se pierda si recargan la página
+// El pedido se guarda en el navegador para que no se pierda al recargar
 function guardar() {
-  try {
-    localStorage.setItem(CLAVE_GUARDADO, JSON.stringify({ carrito, nombre: nombreCliente }));
-  } catch (e) { /* si el navegador no deja guardar, la página sigue funcionando */ }
+  try { localStorage.setItem(CLAVE_GUARDADO, JSON.stringify({ carrito, nombre: nombreCliente })); } catch (e) { /* sigue funcionando */ }
 }
 
 function recuperar() {
@@ -243,13 +175,13 @@ function recuperar() {
   } catch (e) { carrito = {}; }
 }
 
-// Quita del pedido lo que ya no existe en la hoja o se agotó desde la última visita
+// Quita del pedido lo que ya no existe o se agotó desde la última visita
 function limpiarPedido() {
   let quitados = 0;
   for (const subcodigo of Object.keys(carrito)) {
     const dato = indiceEstilos.get(subcodigo);
     const cantidadValida = Number.isInteger(carrito[subcodigo]) && carrito[subcodigo] > 0;
-    if (!dato || !dato.estilo.disponible || !Number.isFinite(dato.producto.precioDetalle) || !cantidadValida) {
+    if (!dato || !dato.estilo.disponible || !Number.isFinite(dato.producto.precio) || !cantidadValida) {
       delete carrito[subcodigo];
       quitados++;
     }
@@ -262,13 +194,9 @@ function limpiarPedido() {
   }
 }
 
+/* ---------- 3. PANTALLA ---------- */
 
-/* ---------------------------------------------------------------------
-   3. PANTALLA: dibujar tarjetas, filtros y pedido
-   --------------------------------------------------------------------- */
-
-// el("div", { class: "caja", texto: "Hola" }, hijo1, hijo2)
-// Crea un elemento HTML. Usa textContent, así el texto de la hoja nunca se interpreta como código.
+// el("div", { class: "caja", texto: "Hola" }, hijo1, hijo2) → crea un elemento (usa textContent: el texto de la hoja nunca es código)
 function el(etiqueta, propiedades = {}, ...hijos) {
   const nodo = document.createElement(etiqueta);
   for (const [clave, valor] of Object.entries(propiedades)) {
@@ -278,9 +206,7 @@ function el(etiqueta, propiedades = {}, ...hijos) {
     else if (clave.startsWith("on")) nodo.addEventListener(clave.slice(2), valor);
     else nodo.setAttribute(clave, valor === true ? "" : valor);
   }
-  for (const hijo of hijos.flat()) {
-    if (hijo != null && hijo !== false) nodo.append(hijo);
-  }
+  for (const hijo of hijos.flat()) if (hijo != null && hijo !== false) nodo.append(hijo);
   return nodo;
 }
 
@@ -288,7 +214,12 @@ function dinero(numero) {
   return CONFIG.moneda + " " + numero.toLocaleString("es-HN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-// Al redibujar una zona, el teclado pierde el foco. Esto lo devuelve al botón equivalente.
+// Enlace que abre WhatsApp con un mensaje ya escrito (para precios mayoristas, anuncios, etc.)
+function enlaceWhatsApp(mensaje) {
+  return "https://wa.me/" + CONFIG.whatsapp + "?text=" + encodeURIComponent(mensaje);
+}
+
+// Al redibujar una zona el teclado pierde el foco: esto lo devuelve al botón equivalente
 function restaurarFoco(contenedor, id) {
   if (!id) return;
   const destino =
@@ -307,16 +238,12 @@ function conservarFoco(contenedor, redibujar) {
 function crearFoto(estilo, textoAlternativo, esMiniatura = false) {
   const vacia = () => el("span", { class: "foto-vacia", texto: esMiniatura ? "" : "Sin foto" });
   if (!estilo.foto) return vacia();
-  const img = el("img", {
-    src: CONFIG.carpetaFotos + encodeURIComponent(estilo.foto),
-    alt: textoAlternativo,
-    loading: "lazy",
-  });
-  img.addEventListener("error", () => img.replaceWith(vacia()));   // si la foto no existe, muestra un recuadro
+  const img = el("img", { src: CONFIG.carpetaFotos + encodeURIComponent(estilo.foto), alt: textoAlternativo, loading: "lazy" });
+  img.addEventListener("error", () => img.replaceWith(vacia()));
   return img;
 }
 
-// Botones  −  2  +  (se usan en las tarjetas y en el pedido)
+// Botones  −  2  +
 function crearContador(cantidad, alCambiar, etiqueta, idFoco) {
   return el("div", { class: "contador-cantidad", role: "group", "aria-label": "Cantidad de " + etiqueta },
     el("button", { type: "button", "aria-label": "Quitar uno", "data-foco": "menos" + idFoco, disabled: cantidad === 0, onclick: () => alCambiar(-1) }, "−"),
@@ -325,10 +252,58 @@ function crearContador(cantidad, alCambiar, etiqueta, idFoco) {
   );
 }
 
-// ----- Tarjeta de producto (portada) -----
-// En la portada cada producto es solo una tarjeta simple: foto, nombre y precios.
-// Al tocarla se abre su pantalla de detalle, donde están los estilos y el botón de agregar.
+// ----- Carrusel de anuncios (pestaña Anuncios) -----
+function crearAnuncio(a, i, total) {
+  const producto = productos.find((p) => p.codigo === a.enlace);
+  let boton = null;
+  if (normalizar(a.enlace) === "whatsapp") {
+    boton = el("a", { class: "anuncio__boton", href: enlaceWhatsApp("Hola, quiero información sobre precios mayoristas."), target: "_blank", rel: "noopener" }, a.boton || "Escribir por WhatsApp");
+  } else if (producto) {
+    boton = el("a", {
+      class: "anuncio__boton", href: "#/producto/" + encodeURIComponent(producto.codigo),
+      onclick: () => { scrollCatalogo = window.scrollY; vinoDelCatalogo = true; },
+    }, a.boton || "Ver producto");
+  }
+  return el("article", { class: "anuncio", role: "group", "aria-roledescription": "diapositiva", "aria-label": (i + 1) + " de " + total },
+    a.foto && el("div", { class: "anuncio__foto" }, crearFoto({ foto: a.foto }, "")),
+    el("div", { class: "anuncio__texto" },
+      a.etiqueta && el("span", { class: "anuncio__etiqueta", texto: a.etiqueta }),
+      el("h2", { texto: a.titulo }),
+      a.texto && el("p", { texto: a.texto }),
+      boton,
+    ),
+  );
+}
 
+function dibujarAnuncios() {
+  const seccion = $("#anuncios");
+  seccion.hidden = anuncios.length === 0;
+  if (anuncios.length === 0) return;
+
+  const pista = el("div", { class: "carrusel__pista" }, anuncios.map((a, i) => crearAnuncio(a, i, anuncios.length)));
+  const puntos = anuncios.map(() => el("span", { class: "carrusel__punto" }));
+  const marcarPunto = () => {
+    const ancho = pista.firstElementChild ? pista.firstElementChild.offsetWidth + 12 : 1;
+    const actual = Math.min(puntos.length - 1, Math.round(pista.scrollLeft / ancho));
+    puntos.forEach((p, i) => p.classList.toggle("carrusel__punto--activo", i === actual));
+  };
+  const mover = (sentido) => pista.scrollBy({ left: sentido * (pista.firstElementChild.offsetWidth + 12), behavior: "smooth" });
+
+  pista.addEventListener("scroll", marcarPunto, { passive: true });
+  seccion.replaceChildren(
+    pista,
+    anuncios.length > 1 && el("div", { class: "carrusel__controles" },
+      el("div", { class: "carrusel__puntos", "aria-hidden": "true" }, puntos),
+      el("div", { class: "carrusel__flechas" },
+        el("button", { type: "button", "aria-label": "Anterior", onclick: () => mover(-1) }, "←"),
+        el("button", { type: "button", "aria-label": "Siguiente", onclick: () => mover(1) }, "→"),
+      ),
+    ),
+  );
+  marcarPunto();
+}
+
+// ----- Tarjeta de producto (portada) -----
 function estiloActual(p) {
   const elegido = p.estilos.find((e) => e.subcodigo === seleccion[p.codigo]);
   return elegido || p.estilos.find((e) => e.disponible) || p.estilos[0];
@@ -338,8 +313,6 @@ function crearTarjeta(p) {
   const estilo = estiloActual(p);
   const unidades = unidadesDe(p);
   const todosAgotados = p.estilos.every((e) => !e.disponible);
-  const precioValido = Number.isFinite(p.precioDetalle);
-
   return el("a", {
     class: "tarjeta",
     href: "#/producto/" + encodeURIComponent(p.codigo),
@@ -351,15 +324,15 @@ function crearTarjeta(p) {
       unidades > 0 && el("span", { class: "etiqueta etiqueta--pedido", texto: unidades + " en tu pedido" }),
     ),
     el("div", { class: "tarjeta__cuerpo" },
+      p.etiqueta && el("p", { class: "tarjeta__etiqueta", texto: p.etiqueta }),
       el("h2", { texto: p.nombre }),
-      el("p", { class: "tarjeta__precio", texto: precioValido ? dinero(p.precioDetalle) : "Consultar precio" }),
-      tieneMayoreo(p) && el("p", { class: "tarjeta__mayoreo", texto: "Mayoreo " + dinero(p.precioMayoreo) + " desde " + p.minimoMayoreo + " u." }),
+      el("p", { class: "tarjeta__precio", texto: Number.isFinite(p.precio) ? dinero(p.precio) : "Consultar precio" }),
       p.estilos.length > 1 && el("p", { class: "tarjeta__estilos", texto: p.estilos.length + " estilos" }),
     ),
   );
 }
 
-// Redibuja solo la tarjeta que cambió (no toda la lista)
+// Redibuja solo la tarjeta que cambió (si no está en la página actual, no hace nada)
 function refrescarTarjeta(p) {
   const vieja = tarjetas.get(p.codigo);
   if (!vieja || !vieja.isConnected) return;
@@ -368,8 +341,7 @@ function refrescarTarjeta(p) {
   tarjetas.set(p.codigo, nueva);
 }
 
-// ----- Pantalla de detalle de un producto -----
-
+// ----- Pantalla de detalle -----
 function crearMiniatura(p, estilo, actual) {
   const cantidad = carrito[estilo.subcodigo] || 0;
   const elegida = estilo.subcodigo === actual.subcodigo;
@@ -387,95 +359,82 @@ function crearMiniatura(p, estilo, actual) {
   );
 }
 
+// Compartir: menú del teléfono si existe; si no, abre WhatsApp con el mensaje listo
+async function compartirProducto(p) {
+  const url = location.origin + location.pathname + "#/producto/" + encodeURIComponent(p.codigo);
+  const texto = "Mira este producto de " + CONFIG.nombreTienda + ": " + p.nombre + (Number.isFinite(p.precio) ? ", " + dinero(p.precio) : "");
+  if (navigator.share) {
+    try { await navigator.share({ title: p.nombre, text: texto, url }); return; }
+    catch (e) { if (e.name === "AbortError") return; }   // si la persona cancela, no hacemos nada
+  }
+  window.open("https://wa.me/?text=" + encodeURIComponent(texto + "\n" + url), "_blank", "noopener");
+}
+
 function crearDetalle(p) {
   const estilo = estiloActual(p);
   const cantidad = carrito[estilo.subcodigo] || 0;
-  const unidades = unidadesDe(p);
   const todosAgotados = p.estilos.every((e) => !e.disponible);
-  const precioValido = Number.isFinite(p.precioDetalle);
+  const precioValido = Number.isFinite(p.precio);
 
-  // Etiqueta sobre la foto
   let etiqueta = ["Disponible", "etiqueta--ok"];
   if (todosAgotados) etiqueta = ["Agotado", "etiqueta--agotado"];
   else if (!estilo.disponible) etiqueta = ["Este estilo está agotado", "etiqueta--agotado"];
 
-  // Aviso del mayoreo (suma todos los estilos del mismo código)
-  let aviso = null;
-  if (tieneMayoreo(p)) {
-    if (aplicaMayoreo(p)) {
-      aviso = el("p", { class: "aviso-mayoreo aviso-mayoreo--ok", texto: unidades + " u. en total · mayoreo aplicado" });
-    } else if (unidades > 0) {
-      aviso = el("p", { class: "aviso-mayoreo", texto: unidades + " u. en total · agrega " + (p.minimoMayoreo - unidades) + " más para mayoreo" });
-    } else if (p.estilos.length > 1) {
-      aviso = el("p", { class: "aviso-mayoreo", texto: "El mayoreo suma todos los estilos" });
-    }
-  }
-
-  // Botón "Agregar" o contador, según haya algo en el pedido
   let accion;
-  if (todosAgotados || !estilo.disponible) {
-    accion = el("button", { type: "button", class: "boton boton--agregar", disabled: true }, "No disponible");
-  } else if (!precioValido) {
-    accion = el("button", { type: "button", class: "boton boton--agregar", disabled: true }, "Consultar precio");
-  } else if (cantidad === 0) {
-    accion = el("button", { type: "button", class: "boton boton--agregar", "data-foco": "mas", onclick: () => cambiarCantidad(estilo, 1) }, "Agregar");
-  } else {
-    accion = crearContador(cantidad, (c) => cambiarCantidad(estilo, c), estilo.nombre || p.nombre, "");
-  }
+  if (todosAgotados || !estilo.disponible) accion = el("button", { type: "button", class: "boton boton--agregar", disabled: true }, "No disponible");
+  else if (!precioValido) accion = el("button", { type: "button", class: "boton boton--agregar", disabled: true }, "Consultar precio");
+  else if (cantidad === 0) accion = el("button", { type: "button", class: "boton boton--agregar", "data-foco": "mas", onclick: () => cambiarCantidad(estilo, 1) }, "Agregar");
+  else accion = crearContador(cantidad, (c) => cambiarCantidad(estilo, c), estilo.nombre || p.nombre, "");
 
   return el("div", { class: "detalle" },
     el("div", { class: "detalle__foto" },
       crearFoto(estilo, p.nombre + (estilo.nombre ? ", " + estilo.nombre : "")),
       el("span", { class: "etiqueta " + etiqueta[1], texto: etiqueta[0] }),
+      p.etiqueta && el("span", { class: "etiqueta etiqueta--destacada", texto: p.etiqueta }),
     ),
     el("div", { class: "detalle__info" },
       el("p", { class: "tarjeta__categoria" }, [p.categoria, p.subcategoria, p.codigo].filter(Boolean).map((t) => el("span", { texto: t }))),
-      el("h1", { id: "detalle-titulo", tabindex: "-1", texto: p.nombre }),
+      el("div", { class: "detalle__titulo" },
+        el("h1", { id: "detalle-titulo", tabindex: "-1", texto: p.nombre }),
+        el("button", { type: "button", class: "boton-compartir", "aria-label": "Compartir producto", onclick: () => compartirProducto(p) }, "Compartir"),
+      ),
       p.estilos.length === 1 && estilo.nombre && el("p", { class: "estilo-unico", texto: estilo.nombre }),
       el("div", { class: "precios" },
         el("div", { class: "precio-fila" },
-          el("span", { class: "precio-etiqueta", texto: "Detalle" }),
-          el("span", { class: "precio-valor", texto: precioValido ? dinero(p.precioDetalle) : "Consultar" }),
-        ),
-        tieneMayoreo(p) && el("div", { class: "mayoreo" + (aplicaMayoreo(p) ? " mayoreo--activo" : "") },
-          el("span", { texto: "Mayoreo desde " + p.minimoMayoreo + " u." }),
-          el("strong", { texto: dinero(p.precioMayoreo) }),
+          el("span", { class: "precio-etiqueta", texto: "Precio" }),
+          el("span", { class: "precio-valor", texto: precioValido ? dinero(p.precio) : "Consultar" }),
         ),
       ),
+      el("a", {
+        class: "mayorista", target: "_blank", rel: "noopener",
+        href: enlaceWhatsApp("Hola, quiero información de precio mayorista de: " + p.nombre + " (" + p.codigo + ")"),
+      }, "¿Precio mayorista o especial? ", el("strong", { texto: "Escríbenos por WhatsApp" })),
       p.estilos.length > 1 && el("div", { class: "estilos" },
         el("span", { class: "estilos__titulo", texto: "Estilos" }),
         el("div", { class: "estilos__lista" }, p.estilos.map((e) => crearMiniatura(p, e, estilo))),
         el("span", { class: "estilos__nombre", texto: estilo.nombre }),
       ),
-      aviso,
       el("div", { class: "detalle__acciones" }, accion),
     ),
   );
 }
 
-// Dibuja la pantalla de detalle completa (enlace "Volver" + el producto)
 function dibujarDetalle(p) {
   $("#vista-detalle").replaceChildren(
     el("a", {
-      class: "volver",
-      href: "#/",
-      // Si venimos de la portada, "volver" usa el historial: así la portada queda como estaba
-      onclick: (e) => { if (vinoDelCatalogo) { e.preventDefault(); history.back(); } },
+      class: "volver", href: "#/",
+      onclick: (e) => { if (vinoDelCatalogo) { e.preventDefault(); history.back(); } },   // así la portada queda como estaba
     }, "← Volver al catálogo"),
     crearDetalle(p),
   );
 }
 
-// Redibuja el detalle después de un cambio (cantidad o estilo), cuidando el foco del teclado
 function refrescarDetalle(p) {
   if (productoDeRuta() !== p) return;
   conservarFoco($("#vista-detalle"), () => dibujarDetalle(p));
 }
 
-// ----- Qué pantalla mostrar: portada o detalle (según el # de la dirección) -----
-// Dirección de la portada:  .../catalogo/
-// Dirección de un producto: .../catalogo/#/producto/J-101
-
+// ----- Qué pantalla mostrar: portada (#/) o detalle (#/producto/J-101) -----
 function productoDeRuta() {
   const coincide = location.hash.match(/^#\/producto\/(.+)$/);
   if (!coincide) return null;
@@ -488,7 +447,6 @@ function mostrarRuta() {
   const p = productoDeRuta();
   $("#vista-catalogo").hidden = Boolean(p);
   $("#vista-detalle").hidden = !p;
-
   if (p) {
     ultimoVisto = p.codigo;
     dibujarDetalle(p);
@@ -499,9 +457,7 @@ function mostrarRuta() {
     vinoDelCatalogo = false;
     dibujarProductos();
     document.title = "Catálogo · " + CONFIG.nombreTienda;
-    window.scrollTo(0, scrollCatalogo);   // vuelve al mismo lugar donde estaba
-
-    // Devuelve el foco del teclado a la tarjeta que se acababa de ver (si no está escribiendo en el buscador)
+    window.scrollTo(0, scrollCatalogo);
     const activo = document.activeElement;
     const sinFoco = activo === document.body || $("#vista-detalle").contains(activo);
     const tarjeta = tarjetas.get(ultimoVisto);
@@ -510,16 +466,15 @@ function mostrarRuta() {
   }
 }
 
-// ----- Filtros y lista de productos -----
-
+// ----- Filtros, lista de productos y páginas -----
 function productosVisibles() {
   const palabras = normalizar(filtros.texto).split(/\s+/).filter(Boolean);
   return productos.filter((p) => {
     if (filtros.categoria !== TODO && p.categoria !== filtros.categoria) return false;
     if (filtros.subcategoria !== TODAS && p.subcategoria !== filtros.subcategoria) return false;
     if (palabras.length === 0) return true;
-    const texto = normalizar([p.codigo, p.nombre, p.categoria, p.subcategoria, ...p.estilos.map((e) => e.nombre + " " + e.subcodigo)].join(" "));
-    return palabras.every((palabra) => texto.includes(palabra));   // deben aparecer todas las palabras
+    const texto = normalizar([p.codigo, p.nombre, p.categoria, p.subcategoria, p.etiqueta, ...p.estilos.map((e) => e.nombre + " " + e.subcodigo)].join(" "));
+    return palabras.every((palabra) => texto.includes(palabra));   // buscar "navideño" también encuentra esa etiqueta
   });
 }
 
@@ -531,7 +486,6 @@ function dibujarFiltros() {
   const categorias = [...new Set(productos.map((p) => p.categoria).filter(Boolean))];
   const navCategorias = $("#categorias");
   const navSub = $("#subcategorias");
-
   const subcategorias = filtros.categoria === TODO
     ? []
     : [...new Set(productos.filter((p) => p.categoria === filtros.categoria).map((p) => p.subcategoria).filter(Boolean))];
@@ -541,18 +495,15 @@ function dibujarFiltros() {
 
   navCategorias.replaceChildren(...[TODO, ...categorias].map((c) =>
     crearChip(c, c === filtros.categoria, () => {
-      filtros.categoria = c;
-      filtros.subcategoria = TODAS;
-      dibujarFiltros();
-      dibujarProductos();
+      filtros.categoria = c; filtros.subcategoria = TODAS; pagina = 1;
+      dibujarFiltros(); dibujarProductos();
     })));
 
   navSub.hidden = subcategorias.length === 0;
   navSub.replaceChildren(...(subcategorias.length ? [TODAS, ...subcategorias] : []).map((s) =>
     crearChip(s, s === filtros.subcategoria, () => {
-      filtros.subcategoria = s;
-      dibujarFiltros();
-      dibujarProductos();
+      filtros.subcategoria = s; pagina = 1;
+      dibujarFiltros(); dibujarProductos();
     })));
 
   if (id) {
@@ -561,25 +512,40 @@ function dibujarFiltros() {
   }
 }
 
+// Dibuja solo los productos de la página actual (CONFIG.productosPorPagina por página)
 function dibujarProductos() {
   const visibles = productosVisibles();
+  const totalPaginas = Math.max(1, Math.ceil(visibles.length / CONFIG.productosPorPagina));
+  pagina = Math.min(Math.max(pagina, 1), totalPaginas);
+  const inicio = (pagina - 1) * CONFIG.productosPorPagina;
+
   const contenedor = $("#productos");
   tarjetas.clear();
   contenedor.replaceChildren();
-
-  for (const p of visibles) {
+  for (const p of visibles.slice(inicio, inicio + CONFIG.productosPorPagina)) {
     const tarjeta = crearTarjeta(p);
     tarjetas.set(p.codigo, tarjeta);
     contenedor.append(tarjeta);
   }
-  if (visibles.length === 0) {
-    contenedor.append(el("p", { class: "vacio", texto: "No encontramos productos con esa búsqueda." }));
-  }
+  if (visibles.length === 0) contenedor.append(el("p", { class: "vacio", texto: "No encontramos productos con esa búsqueda." }));
   $("#resumen").textContent = visibles.length === 1 ? "1 producto" : visibles.length + " productos";
+  dibujarPaginas(totalPaginas);
+}
+
+// ← Anterior · Página 2 de 5 · Siguiente →  (se ocultan si todo cabe en una página)
+function dibujarPaginas(total) {
+  const nav = $("#paginas");
+  nav.hidden = total <= 1;
+  if (total <= 1) return;
+  const ir = (n) => { pagina = n; dibujarProductos(); $("#resumen").scrollIntoView(); };
+  nav.replaceChildren(
+    el("button", { type: "button", disabled: pagina === 1, onclick: () => ir(pagina - 1) }, "← Anterior"),
+    el("span", { class: "paginas__estado", texto: "Página " + pagina + " de " + total, "aria-live": "polite" }),
+    el("button", { type: "button", disabled: pagina === total, onclick: () => ir(pagina + 1) }, "Siguiente →"),
+  );
 }
 
 // ----- Panel del pedido -----
-
 function crearLinea(l) {
   const nombreEstilo = [l.estilo.nombre, l.estilo.subcodigo].filter(Boolean).join(" · ");
   return el("li", { class: "linea" },
@@ -587,7 +553,6 @@ function crearLinea(l) {
       el("strong", { texto: l.producto.nombre }),
       el("span", { class: "linea__estilo", texto: nombreEstilo }),
       el("span", { class: "linea__precio", texto: l.cantidad + " × " + dinero(l.precio) }),
-      el("span", { class: "etiqueta-mini" + (l.mayoreo ? " etiqueta-mini--mayoreo" : ""), texto: l.mayoreo ? "Precio de mayoreo" : "Precio al detalle" }),
     ),
     el("div", { class: "linea__acciones" },
       el("strong", { texto: dinero(l.subtotal) }),
@@ -599,7 +564,6 @@ function crearLinea(l) {
 function dibujarPedido() {
   const lineas = lineasDelPedido();
   const unidades = totalUnidades();
-
   $("#contador").textContent = String(unidades);
   $("#abrir-pedido").setAttribute("aria-label", "Mi pedido, " + unidades + (unidades === 1 ? " unidad" : " unidades"));
 
@@ -640,36 +604,26 @@ function mostrarVista(vista) {
   $("#pedido-titulo").textContent = enLista ? "Tu pedido" : "Confirma tu pedido";
 }
 
-
-/* ---------------------------------------------------------------------
-   4. WHATSAPP: armar el mensaje y abrir el chat
-   --------------------------------------------------------------------- */
-
+/* ---------- 4. WHATSAPP ---------- */
 function armarMensaje() {
   const lineas = lineasDelPedido();
-
-  // Junta las líneas por producto (código), conservando el orden en que se agregaron
-  const grupos = new Map();
+  const grupos = new Map();                       // un grupo por producto, en el orden en que se agregaron
   for (const l of lineas) {
     if (!grupos.has(l.producto.codigo)) grupos.set(l.producto.codigo, []);
     grupos.get(l.producto.codigo).push(l);
   }
-
-  // Un bloque por producto: código y nombre, unidades y precio, estilos y subtotal
-  // (en WhatsApp, *así* es negrita y _así_ es cursiva)
+  // En WhatsApp, *así* es negrita y _así_ es cursiva
   const bloques = [...grupos.values()].map((items, i) => {
     const p = items[0].producto;
     const unidades = items.reduce((suma, l) => suma + l.cantidad, 0);
     const subtotal = items.reduce((suma, l) => suma + l.subtotal, 0);
-    const nota = items[0].mayoreo ? " (mayoreo)" : items[0].oferta ? " (oferta)" : "";
     return [
       (i + 1) + ". *" + p.codigo + "* · " + p.nombre,
-      "   " + unidades + " u. a " + dinero(items[0].precio) + nota,
+      "   " + unidades + " u. a " + dinero(p.precio),
       ...items.map((l) => "   • " + [l.estilo.nombre, "(" + l.estilo.subcodigo + ")"].filter(Boolean).join(" ") + " × " + l.cantidad),
       "   Subtotal: *" + dinero(subtotal) + "*",
     ].join("\n");
   });
-
   return [
     "*PEDIDO DE COTIZACIÓN*",
     "Nombre: " + nombreCliente,
@@ -689,15 +643,10 @@ function enviarPorWhatsApp() {
     return;
   }
   aviso.hidden = true;
-  const url = "https://wa.me/" + CONFIG.whatsapp + "?text=" + encodeURIComponent(armarMensaje());
-  window.open(url, "_blank", "noopener");
+  window.open(enlaceWhatsApp(armarMensaje()), "_blank", "noopener");
 }
 
-
-/* ---------------------------------------------------------------------
-   5. ARRANQUE: conectar los botones y cargar el catálogo
-   --------------------------------------------------------------------- */
-
+/* ---------- 5. ARRANQUE ---------- */
 function mostrarMensaje(texto, detalle, conReintento) {
   const caja = $("#mensaje");
   caja.replaceChildren(
@@ -711,15 +660,14 @@ function mostrarMensaje(texto, detalle, conReintento) {
 function conectarEventos() {
   const dialogo = $("#pedido");
 
-  // Buscador
   $("#form-buscar").addEventListener("submit", (e) => e.preventDefault());
   $("#buscador").addEventListener("input", (e) => {
-       filtros.texto = e.target.value;
-    if (productoDeRuta()) location.hash = "#/";   // buscar desde un detalle vuelve a la portada
+    filtros.texto = e.target.value;
+    pagina = 1;                                          // buscar siempre empieza en la página 1
+    if (productoDeRuta()) location.hash = "#/";          // buscar desde un detalle vuelve a la portada
     else dibujarProductos();
   });
 
-  // Abrir y cerrar el panel del pedido
   $("#abrir-pedido").addEventListener("click", () => {
     dibujarPedido();
     mostrarVista("lista");
@@ -727,16 +675,14 @@ function conectarEventos() {
     dialogo.showModal();
   });
   $("#cerrar-pedido").addEventListener("click", () => dialogo.close());
-  dialogo.addEventListener("click", (e) => { if (e.target === dialogo) dialogo.close(); });   // clic fuera del panel
+  dialogo.addEventListener("click", (e) => { if (e.target === dialogo) dialogo.close(); });
 
-  // Nombre del cliente
   $("#nombre").addEventListener("input", (e) => {
     nombreCliente = e.target.value.trim();
     $("#error-nombre").hidden = true;
     guardar();
   });
 
-  // Pasar a la confirmación
   $("#revisar").addEventListener("click", () => {
     const nombre = $("#nombre").value.trim();
     if (nombre === "") {
@@ -765,19 +711,21 @@ function conectarEventos() {
     if (abierto) refrescarDetalle(abierto);
     dibujarPedido();
   });
-    // Cambiar de pantalla (portada ⇄ detalle): también funciona con el botón "atrás" del celular
+
   window.addEventListener("hashchange", () => { if (productos.length > 0) mostrarRuta(); });
 }
 
 async function cargarYMostrar() {
   mostrarMensaje("Cargando catálogo…", "", false);
   try {
+    const promesaAnuncios = cargarAnuncios();          // se piden a la vez que los productos
     productos = await cargarCatalogo();
+    anuncios = await promesaAnuncios;
     indiceEstilos.clear();
     for (const p of productos) for (const e of p.estilos) indiceEstilos.set(e.subcodigo, { producto: p, estilo: e });
-
     limpiarPedido();
     $("#mensaje").hidden = true;
+    dibujarAnuncios();
     dibujarFiltros();
     mostrarRuta();
     dibujarPedido();
@@ -789,9 +737,9 @@ async function cargarYMostrar() {
 }
 
 function iniciar() {
-     if ("scrollRestoration" in history) history.scrollRestoration = "manual";   // la posición la controlamos nosotros
+  if ("scrollRestoration" in history) history.scrollRestoration = "manual";
   document.title = "Catálogo · " + CONFIG.nombreTienda;
-  $("#marca").textContent = CONFIG.nombreTienda;
+  $("#enlace-mayorista").href = enlaceWhatsApp("Hola, quiero información sobre precios mayoristas.");
   recuperar();
   conectarEventos();
   dibujarPedido();
